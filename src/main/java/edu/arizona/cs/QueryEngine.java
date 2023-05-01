@@ -57,7 +57,6 @@ import java.nio.file.Paths;
 
 public class QueryEngine {
     static boolean indexExists=false;
-    static String inputFilePath ="";
     static List<WikiPage> docStrings;
     static Directory index;
     static int errors = 0;
@@ -73,7 +72,7 @@ public class QueryEngine {
     	
         docStrings = new ArrayList<WikiPage>();   
         index = new ByteBuffersDirectory();
-        String directoryPath = "wiki-subset-20140602";
+        String directoryPath = "src/main/resources/wiki-subset-20140602";
 
         try {
             // Create a Path object for the directory
@@ -260,7 +259,7 @@ public class QueryEngine {
     public static List<JeopardyQuestion> getQuestions() {
     	List<JeopardyQuestion> questions = new ArrayList<>();
 
-        try (BufferedReader reader = new BufferedReader(new FileReader("/Users/adityaj2003/csc483/hw3_java-adityaj2003/src/main/java/edu/arizona/cs/questions.txt"))) {
+        try (BufferedReader reader = new BufferedReader(new FileReader("src/main/resources/questions.txt"))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 String category = line;
