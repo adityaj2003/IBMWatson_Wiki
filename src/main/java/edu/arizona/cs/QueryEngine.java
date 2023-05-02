@@ -13,6 +13,7 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -28,6 +29,7 @@ import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.en.PorterStemFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.analysis.core.StopFilter;
+import org.apache.lucene.search.BooleanClause;
 
 
 
@@ -57,7 +59,7 @@ import java.nio.file.Paths;
 
 public class QueryEngine {
     static boolean indexExists=false;
-    static List<WikiPage> docStrings;
+    static List<documentEntry> docStrings;
     static Directory index;
     static int errors = 0;
     static Properties props = new Properties();
@@ -70,7 +72,7 @@ public class QueryEngine {
     	 props.setProperty("annotators", "tokenize,ssplit,pos,lemma");
     	 pipeline = new StanfordCoreNLP(props);
     	
-        docStrings = new ArrayList<WikiPage>();   
+        docStrings = new ArrayList<documentEntry>();   
         index = new ByteBuffersDirectory();
         String directoryPath = "src/main/resources/wiki-subset-20140602";
 
@@ -112,18 +114,12 @@ public class QueryEngine {
     }
     
     public static void parseFile(String filePath) throws IOException {
-//    	if (docStrings.size() > 5) {
-//    		for (int i = 0; i<1; i++) {
-//    			System.out.println(docStrings.get(i).categories);
-//    		}
-//    	}
-    	docStrings.clear();
-    	try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
+        docStrings.clear();
+        try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
             String line;
             String title = null;
             StringBuilder intro = new StringBuilder();
             String categories = "";
-            boolean isIntro = false;
             Pattern titlePattern = Pattern.compile("\\[\\[(.*?)\\]\\]");
             Pattern categoryPattern = Pattern.compile("CATEGORIES:(.*?)$");
 
@@ -131,8 +127,8 @@ public class QueryEngine {
                 if (line.startsWith("[[")) {
                     Matcher matcher = titlePattern.matcher(line);
                     if (matcher.find()) {
-                        if (title != null && intro.length() > 0) {
-                            docStrings.add(new WikiPage(title, intro.toString(), categories));
+                        if (title != null) {
+                            docStrings.add(new documentEntry(title, intro.toString(), categories));
                             intro = new StringBuilder();
                             categories = "";
                         }
@@ -143,31 +139,16 @@ public class QueryEngine {
                     if (matcher.find()) {
                         categories = matcher.group(1);
                     }
-                } else if (title != null && !line.isEmpty() && !line.startsWith("==")) {
-                    if (!isIntro) {
-                        isIntro = true;
-                    } else {
-                        intro.append(" ");
-                    }
-                    intro.append(line);
-                } else if (line.startsWith("==")) {
-                    if (title != null && intro.length() > 0) {
-                        docStrings.add(new WikiPage(title, intro.toString(), categories));
-                        title = null;
-                        intro = new StringBuilder();
-                        categories = "";
-                    }
-                    isIntro = false;
+                } else if (title != null && !line.isEmpty()) {
+                    intro.append(line).append(" ");
                 }
             }
 
             // Add the last article
             if (title != null && intro.length() > 0) {
-                docStrings.add(new WikiPage(title, intro.toString(), categories));
+                docStrings.add(new documentEntry(title, intro.toString(), categories));
             }
         }
-
-
     }
     
     public static class CustomPorterStemmingAnalyzer extends Analyzer {
@@ -201,15 +182,15 @@ public class QueryEngine {
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
 
         IndexWriter w = new IndexWriter(index, config);
-        for (WikiPage doc : docStrings) {
+        for (documentEntry doc : docStrings) {
         	Document luceneDoc = new Document();
             luceneDoc.add(new StringField("title", doc.title, Field.Store.YES));
 
 //            List<String> lemmatizedIntro = lemmatize(doc.intro);
 //            String lemmatizedIntroText = String.join(" ", lemmatizedIntro);
-            luceneDoc.add(new TextField("intro", doc.intro +" "+ doc.categories, Field.Store.NO));
+            luceneDoc.add(new TextField("intro", doc.intro , Field.Store.NO));
 
-//            luceneDoc.add(new TextField("categories", doc.categories, Field.Store.NO));
+            luceneDoc.add(new TextField("categories", doc.categories, Field.Store.NO));
 
             w.addDocument(luceneDoc);
         }
@@ -220,24 +201,21 @@ public class QueryEngine {
     }
     
     public static String searchQuery(String category, String clue) throws IOException {
-    	Analyzer analyzer = new CustomPorterStemmingAnalyzer();
-    	String querystr = new String(clue);
-        Query q = null;
-		try {
-			q = new MultiFieldQueryParser(
-                    new String[] {"intro"},
-                    analyzer).parse(querystr);
-		} catch (ParseException e) {
-			// TODO Auto-generated catch block
-			errors += 1;
-			return "lol";
-		}
+    	try {
+    		Analyzer analyzer = new CustomPorterStemmingAnalyzer();
+
+    		// Combine clue and category into a single query string
+    		String combinedQueryString = "intro:(" + clue + ") categories:(\"" + category + "\")";
+
+    		// Create a single QueryParser instance and parse the combined query string
+    		QueryParser parser = new QueryParser("", analyzer);
+    		Query combinedQuery = parser.parse(combinedQueryString);
+		
         int hitsPerPage = 1;
         IndexReader reader = DirectoryReader.open(index);
         IndexSearcher searcher = new IndexSearcher(reader);
 //        searcher.setSimilarity(new ClassicSimilarity());
-        try {
-        TopDocs docs = searcher.search(q, hitsPerPage);
+        TopDocs docs = searcher.search(combinedQuery, hitsPerPage);
         
         	
         ScoreDoc[] hits = docs.scoreDocs;
@@ -280,12 +258,12 @@ public class QueryEngine {
     }
     
     
-    public static class WikiPage {
+    public static class documentEntry {
         private String title;
         private String intro;
         private String categories;
 
-        public WikiPage(String title, String intro, String categories) {
+        public documentEntry(String title, String intro, String categories) {
             this.title = title;
             this.intro = intro;
             this.categories = categories;
