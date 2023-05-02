@@ -10,10 +10,7 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
-import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -29,7 +26,6 @@ import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.en.PorterStemFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.analysis.core.StopFilter;
-import org.apache.lucene.search.BooleanClause;
 
 
 
@@ -38,16 +34,7 @@ import edu.stanford.nlp.pipeline.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.io.File;
 import java.io.IOException;
-import java.util.Scanner;
-import java.util.Set;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.util.regex.Matcher;
@@ -77,24 +64,22 @@ public class QueryEngine {
         String directoryPath = "src/main/resources/wiki-subset-20140602";
 
         try {
-            // Create a Path object for the directory
             Path dirPath = Paths.get(directoryPath);
-
-            // Create a DirectoryStream with a filter for .txt files
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirPath, "*.txt")) {
-                // Loop through all .txt files in the directory
                 for (Path filePath : stream) {
                     // Print the file path
                     parseFile(filePath.toString());
                     writeToIndex();
-                    
-                    
                 }
             }
             int score = 0;
             List<JeopardyQuestion> questions = getQuestions();
             for (JeopardyQuestion question : questions) {
-            	if (searchQuery(question.category, question.clue).equals(question.answer)) {
+            	String returnVal = searchQuery(question.category, question.clue);
+            	System.out.println(returnVal);
+            	System.out.println(question.answer);
+            	if (question.answer.toLowerCase().contains(returnVal.toLowerCase())) {
+            		
             		score+=1;
             	}
             }
@@ -223,7 +208,6 @@ public class QueryEngine {
             int docId = hits[0].doc;
             
             Document d = searcher.doc(docId);
-            System.out.println(d.get("title"));
             reader.close();
             return d.get("title");
         }
