@@ -10,6 +10,7 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
@@ -51,14 +52,12 @@ public class QueryEngine {
     static int errors = 0;
     static Properties props = new Properties();
     static StanfordCoreNLP pipeline;
-    static CharArraySet customStopWords = EnglishAnalyzer.getDefaultStopSet();
+    static CharArraySet stopWords = EnglishAnalyzer.getDefaultStopSet();
 
-    static CharArraySet stopWords =   new CharArraySet(customStopWords, true);
 
     public static void main(String[] args ) {
     	 props.setProperty("annotators", "tokenize,ssplit,pos,lemma");
     	 pipeline = new StanfordCoreNLP(props);
-    	
         docStrings = new ArrayList<documentEntry>();   
         index = new ByteBuffersDirectory();
         String directoryPath = "src/main/resources/wiki-subset-20140602";
@@ -67,7 +66,6 @@ public class QueryEngine {
             Path dirPath = Paths.get(directoryPath);
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirPath, "*.txt")) {
                 for (Path filePath : stream) {
-                    // Print the file path
                     parseFile(filePath.toString());
                     writeToIndex();
                 }
@@ -76,8 +74,6 @@ public class QueryEngine {
             List<JeopardyQuestion> questions = getQuestions();
             for (JeopardyQuestion question : questions) {
             	String returnVal = searchQuery(question.category, question.clue);
-            	System.out.println(returnVal);
-            	System.out.println(question.answer);
             	if (question.answer.toLowerCase().contains(returnVal.toLowerCase())) {
             		
             		score+=1;
@@ -170,12 +166,15 @@ public class QueryEngine {
         for (documentEntry doc : docStrings) {
         	Document luceneDoc = new Document();
             luceneDoc.add(new StringField("title", doc.title, Field.Store.YES));
-
+            if (doc.title.equals("Cape Town")) {
+            	System.out.println(doc.intro);
+            	System.out.println(doc.categories);
+            }
 //            List<String> lemmatizedIntro = lemmatize(doc.intro);
 //            String lemmatizedIntroText = String.join(" ", lemmatizedIntro);
-            luceneDoc.add(new TextField("intro", doc.intro , Field.Store.NO));
+            luceneDoc.add(new TextField("intro", doc.intro , Field.Store.YES));
 
-            luceneDoc.add(new TextField("categories", doc.categories, Field.Store.NO));
+            luceneDoc.add(new TextField("categories", doc.categories, Field.Store.YES));
 
             w.addDocument(luceneDoc);
         }
@@ -189,17 +188,19 @@ public class QueryEngine {
     	try {
     		Analyzer analyzer = new CustomPorterStemmingAnalyzer();
 
-    		// Combine clue and category into a single query string
-    		String combinedQueryString = "intro:(" + clue + ") categories:(\"" + category + "\")";
 
-    		// Create a single QueryParser instance and parse the combined query string
-    		QueryParser parser = new QueryParser("", analyzer);
+    		String combinedQueryString = "intro:(" + clue + ") categories:(" + category + ")";
+
+
+    		String[] fields = {"intro", "categories"};
+            MultiFieldQueryParser parser = new MultiFieldQueryParser(fields, analyzer);
+
     		Query combinedQuery = parser.parse(combinedQueryString);
 		
         int hitsPerPage = 1;
         IndexReader reader = DirectoryReader.open(index);
         IndexSearcher searcher = new IndexSearcher(reader);
-//        searcher.setSimilarity(new ClassicSimilarity());
+        searcher.setSimilarity(new ClassicSimilarity());
         TopDocs docs = searcher.search(combinedQuery, hitsPerPage);
         
         	
